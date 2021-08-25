@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup, NavigableString
+import urllib.request
 import requests
 import re
 from .dicts import *
@@ -11,8 +12,11 @@ class Scraper(ABC):
         self.main_url = main_url
         super().__init__()
 
-    def get_soup(self):
-        source = requests.get(self.url).text
+    def get_soup(self, headers, proxy):
+        if proxy:
+            source = requests.get(self.url, headers=headers, proxies=proxy).text
+        else:
+            source = requests.get(self.url, headers=headers).text
         return BeautifulSoup(source, "lxml")
 
     @abstractmethod
@@ -71,15 +75,23 @@ class PhoneScraper(Scraper):
         self.img_url = ""
 
     def parse_and_get_result(self, main_content):
-        self.__collect_image(main_content)
         self.__init_table_blocks(main_content)
         self.__collect_phone_details(main_content)
+        self.__collect_image(main_content)
+        # self.__download_image()
 
         return self.phone
+
+    def __download_image(self):
+        try:
+            urllib.request.urlretrieve(self.img_url, f"files/images/{self.phone['name']}")
+        except Exception:
+            pass
 
     def __collect_image(self, content):
         image_block = content.find("div", class_="specs-photo-main")
         self.img_url = image_block.find("img")["src"]
+        self.phone.update({"image_url": self.img_url})
 
     def __init_table_blocks(self, content):
         block = content.find("div", id="specs-list")
@@ -89,23 +101,48 @@ class PhoneScraper(Scraper):
             self.table_blocks[header.lower()] = table
 
     def __collect_phone_details(self, content):
-        self.__collect_network_data(self.table_blocks["network"])
-        self.__collect_launch_data(self.table_blocks["launch"])
-        self.__collect_body_data(self.table_blocks["body"])
-        self.__collect_display_data(self.table_blocks["display"])
-        self.__collect_platform_data(self.table_blocks["platform"])
-        self.__collect_memory_data(self.table_blocks["memory"])
-        self.__collect_main_camera_data(self.table_blocks["main camera"])
-        self.__collect_selfie_camera_data(self.table_blocks["selfie camera"])
-        self.__collect_sound_data(self.table_blocks["sound"])
-        self.__collect_comms_data(self.table_blocks["comms"])
-        self.__collect_features_data(self.table_blocks["features"])
-        self.__collect_battery_data(self.table_blocks["battery"])
+        self.__collect_name_data(content)
+        self.__collect_network_data(self.table_blocks.get("network", None))
+        self.__collect_launch_data(self.table_blocks.get("launch", None))
+        self.__collect_body_data(self.table_blocks.get("body", None))
+        self.__collect_display_data(self.table_blocks.get("display", None))
+        self.__collect_platform_data(self.table_blocks.get("platform", None))
+        self.__collect_memory_data(self.table_blocks.get("memory", None))
+        self.__collect_main_camera_data(self.table_blocks.get("main camera", None))
+        self.__collect_selfie_camera_data(self.table_blocks.get("selfie camera", None))
+        self.__collect_sound_data(self.table_blocks.get("sound", None))
+        self.__collect_comms_data(self.table_blocks.get("comms", None))
+        self.__collect_features_data(self.table_blocks.get("features", None))
+        self.__collect_battery_data(self.table_blocks.get("battery", None))
+        self.__collect_misc_data(self.table_blocks.get("misc", None))
+
+    def __collect_name_data(self, main_content):
+        data = NameData()
+        if not main_content:
+            self.phone.update({
+                "name": "",
+            })
+            return
+        try:
+            name = main_content.find("h1", class_="specs-phone-name-title").text
+        except Exception:
+            name = ""
+        data["name"] = name
+        self.phone.update(data)
 
     def __collect_network_data(self, table_content):
         data = NetworkData()
+        if not table_content:
+            self.phone.update({
+                "network_technology": "",
+            })
+            return
         try:
-            network_technology = table_content.find("a").text
+            network_row = table_content.find_all("tr")[0]
+            try:
+                network_technology = network_row.find("td", class_="nfo").a.text
+            except Exception:
+                network_technology = ""
         except Exception:
             network_technology = ""
         data["network_technology"] = network_technology
@@ -113,6 +150,12 @@ class PhoneScraper(Scraper):
 
     def __collect_launch_data(self, table_content):
         data = LaunchData()
+        if not table_content:
+            self.phone.update({
+                "announced": "",
+                "status": ""
+            })
+            return
         try:
             announced = table_content.find("td", {"data-spec": "year"}).text
         except Exception:
@@ -127,6 +170,14 @@ class PhoneScraper(Scraper):
 
     def __collect_body_data(self, table_content):
         data = BodyData()
+        if not table_content:
+            self.phone.update({
+                "dimensions": "",
+                "weight": 0,
+                "build": "",
+                "sim": ""
+            })
+            return
         try:
             dimensions = table_content.find("td", {"data-spec": "dimensions"}).text
         except Exception:
@@ -152,6 +203,14 @@ class PhoneScraper(Scraper):
 
     def __collect_display_data(self, table_content):
         data = DisplayData()
+        if not table_content:
+            self.phone.update({
+                "type": "",
+                "size": "",
+                "resolution": "",
+                "protection": ""
+            })
+            return
         try:
             display_type = table_content.find("td", {"data-spec": "displaytype"}).text
         except Exception:
@@ -177,6 +236,14 @@ class PhoneScraper(Scraper):
 
     def __collect_platform_data(self, table_content):
         data = PlatformData()
+        if not table_content:
+            self.phone.update({
+                "os": "",
+                "chipset": [],
+                "cpu": [],
+                "gpu": []
+            })
+            return
         try:
             os = table_content.find("td", {"data-spec": "os"}).text
         except Exception:
@@ -214,6 +281,12 @@ class PhoneScraper(Scraper):
 
     def __collect_memory_data(self, table_content):
         data = MemoryData()
+        if not table_content:
+            self.phone.update({
+                "card_slot": "",
+                "internal_memory": ""
+            })
+            return
         try:
             card_slot = table_content.find("td", {"data-spec": "memoryslot"}).text
         except Exception:
@@ -229,6 +302,14 @@ class PhoneScraper(Scraper):
 
     def __collect_main_camera_data(self, table_content):
         data = MainCameraData()
+        if not table_content:
+            self.phone.update({
+                "mc_type": "",
+                "mc_details": [],
+                "mc_features": "",
+                "mc_video": ""
+            })
+            return
         try:
             mc_type = table_content.find("td", class_="ttl").a.text
         except Exception:
@@ -258,6 +339,14 @@ class PhoneScraper(Scraper):
 
     def __collect_selfie_camera_data(self, table_content):
         data = SelfieCameraData()
+        if not table_content:
+            self.phone.update({
+                "sc_type": "",
+                "sc_details": [],
+                "sc_features": "",
+                "sc_video": ""
+            })
+            return
         try:
             sc_type = table_content.find("td", class_="ttl").a.text
         except Exception:
@@ -287,6 +376,12 @@ class PhoneScraper(Scraper):
 
     def __collect_sound_data(self, table_content):
         data = SoundData()
+        if not table_content:
+            self.phone.update({
+                "loudspeaker": "",
+                "jack": ""
+            })
+            return
         try:
             loudspeaker_row = table_content.find_all("tr")[0]
             loudspeaker = loudspeaker_row.find("td", class_="nfo").text
@@ -304,6 +399,16 @@ class PhoneScraper(Scraper):
 
     def __collect_comms_data(self, table_content):
         data = CommsData()
+        if not table_content:
+            self.phone.update({
+                "wlan": "",
+                "bluetooth": "",
+                "gps": "",
+                "nfs": "",
+                "radio": "",
+                "usb": ""
+            })
+            return
         try:
             wlan = table_content.find("td", {"data-spec": "wlan"}).text
         except Exception:
@@ -339,6 +444,12 @@ class PhoneScraper(Scraper):
 
     def __collect_features_data(self, table_content):
         data = FeaturesData()
+        if not table_content:
+            self.phone.update({
+                "sensors": "",
+                "features_other": []
+            })
+            return
         try:
             sensors = table_content.find("td", {"data-spec": "sensors"}).text
         except Exception:
@@ -358,6 +469,14 @@ class PhoneScraper(Scraper):
 
     def __collect_battery_data(self, table_content):
         data = BatteryData()
+        if not table_content:
+            self.phone.update({
+                "battery_type": "",
+                "charging": [],
+                "stand_by": "",
+                "music_play": ""
+            })
+            return
         try:
             battery_type = table_content.find("td", {"data-spec": "batdescription1"}).text
         except Exception:
@@ -376,11 +495,43 @@ class PhoneScraper(Scraper):
         except Exception:
             stand_by = ""
         try:
-            talk_time = table_content.find("td", {"data-spec": "batstandby1"}).text
+            music_play = table_content.find("td", {"data-spec": "batmusicplayback1"}).text
         except Exception:
-            talk_time = ""
+            music_play = ""
 
-        data["sensors"] = sensors
-        data["features_other"] = features_other
+        data["battery_type"] = battery_type
+        data["charging"] = charging
+        data["stand_by"] = stand_by
+        data["music_play"] = music_play
+        self.phone.update(data)
+
+    def __collect_misc_data(self, table_content):
+        data = MiscData()
+        if not table_content:
+            self.phone.update({
+                "colors": "",
+                "models": "",
+                "price": ""
+            })
+            return
+        try:
+            colors = table_content.find("td", {"data-spec": "colors"}).text
+        except Exception:
+            colors = ""
+        try:
+            models = table_content.find("td", {"data-spec": "models"}).text
+        except Exception:
+            models = ""
+        try:
+            price = table_content.find("td", {"data-spec": "price"}).text
+        except Exception:
+            try:
+                price = table_content.find("td", {"data-spec": "price"}).a.text
+            except Exception:
+                price = 0
+
+        data["colors"] = colors
+        data["models"] = models
+        data["price"] = price
         self.phone.update(data)
         

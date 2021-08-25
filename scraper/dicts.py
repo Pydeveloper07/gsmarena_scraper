@@ -1,6 +1,10 @@
 import typing
 
 
+class NameData(typing.Dict):
+    name: str
+
+
 class NetworkData(typing.Dict):
     network_technology: str
 
@@ -73,7 +77,6 @@ class BatteryData(typing.Dict):
     battery_type: str
     charging: typing.List[str]
     stand_by: str
-    talk_time: str
     music_play: str
 
 
@@ -81,3 +84,7 @@ class MiscData(typing.Dict):
     colors: str
     models: str
     price: str
+
+
+class ImageData(typing.Dict):
+    image_url: str
